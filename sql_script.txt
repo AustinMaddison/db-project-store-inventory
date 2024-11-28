@@ -1,0 +1,411 @@
+-- DROP TABLE IF EXISTS  Account CASCADE;
+-- DROP  TABLE IF EXISTS Staff CASCADE;
+-- DROP TABLE IF EXISTS Customer CASCADE;
+-- DROP TABLE IF EXISTS Address CASCADE;
+-- DROP TABLE IF EXISTS CustomerAddress CASCADE;
+
+CREATE TABLE Account (
+    AccountID SERIAL UNIQUE PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    PasswordHash CHAR(60) NOT NULL,
+    Email VARCHAR(255) UNIQUE NOT NULL,
+    isActive boolean,
+    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE Staff (
+    CONSTRAINT StaffID PRIMARY KEY (AccountID),
+    Role VARCHAR(50) NOT NULL CHECK (Role IN ('Admin', 'Manager', 'Staff'))
+) INHERITS (ACCOUNT);
+
+CREATE TABLE Customer (
+    CONSTRAINT CustomerID PRIMARY KEY (AccountID)
+)INHERITS (ACCOUNT);
+
+CREATE TABLE Address(
+    AddressID SERIAL UNIQUE PRIMARY KEY,
+    details TEXT NOT NULL
+);
+
+CREATE TABLE Supplier(
+    SupplierID SERIAL UNIQUE PRIMARY KEY,
+    Name VARCHAR(20) NOT NULL,
+    Emails VARCHAR(40),
+    Telephone VARCHAR(40),
+    Details VARCHAR(200)NOT NULL
+);
+
+CREATE TABLE CustomerAddress(
+    AddressID INT,
+    CustomerID INT,
+    PRIMARY KEY  (AddressID, CustomerID) ,
+    FOREIGN KEY (AddressID) REFERENCES Address(AddressID),
+    FOREIGN KEY (CustomerID) REFERENCES Customer(AccountID)
+);
+
+CREATE TABLE ShippingMethod(
+    ShippingID SERIAL UNIQUE PRIMARY KEY,
+    Name VARCHAR(20) NOT NULL,
+    Details TEXT,
+    isActive boolean
+);
+
+CREATE TABLE Tags(
+    TagsID SERIAL UNIQUE PRIMARY KEY,
+    Name VARCHAR(20) NOT NULL,
+    Details TEXT
+);
+
+CREATE TABLE Item(
+    ItemID SERIAL UNIQUE PRIMARY KEY,
+    Name VARCHAR(20) NOT NULL,
+    PictureLink VARCHAR(100) NOT NULL
+);
+
+
+
+CREATE TABLE Inventory(
+    InventoryID SERIAL UNIQUE PRIMARY KEY,
+    Quantity INT NOT NULL,
+    Price float NOT NULL,
+    ItemID INT,
+    OrderType varchar(20) CHECK (OrderType in('PreOrder', 'Normal')  ),
+    FOREIGN KEY (ItemID) REFERENCES Item(ItemID),
+    CONSTRAINT check_non_negative_quantity CHECK (Quantity >= 0),
+    CONSTRAINT check_non_negative_price CHECK (Price >= 0)
+);
+
+
+
+
+
+CREATE TABLE Item_Tags(
+    TagsID INT,
+    ItemID INT,
+
+    FOREIGN KEY (TagsID) REFERENCES Tags(TagsID),
+    FOREIGN KEY (ItemID) REFERENCES Item(ItemID)
+
+);
+
+
+
+
+CREATE TABLE CustomerOrder(
+    OrderID SERIAL UNIQUE PRIMARY KEY,
+    CustomerID INT,
+    AddressID INT,
+    ShippingID INT,
+    InventoryID INT,
+    TotalPrice FLOAT NOT NULL,
+    OrderType VARCHAR(20) NOT NULL CHECK ( OrderType in ('PreOrder','Normal')),
+    OrderDate  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    Quantity INT,
+    FOREIGN KEY (CustomerID) REFERENCES Customer(AccountID),
+    FOREIGN KEY (AddressID) REFERENCES  Address(AddressID),
+    FOREIGN KEY (ShippingID) REFERENCES ShippingMethod(ShippingID),
+    FOREIGN KEY (InventoryID) REFERENCES Inventory(InventoryID)
+);
+
+
+
+
+CREATE TABLE ApprovedOrder(
+    OrderID INT,
+    IsFullfilled boolean,
+
+    FOREIGN KEY (OrderID) REFERENCES CustomerOrder(OrderID)
+);
+
+
+
+
+CREATE TABLE Item_Supplier(
+    SupplierID INT,
+    ItemID INT,
+
+    PRIMARY KEY (SupplierID, ItemID),
+    FOREIGN KEY (SupplierID) REFERENCES Supplier(SupplierID),
+    FOREIGN KEY (ItemID) REFERENCES Item(ItemID)
+);
+
+CREATE TYPE PurchaseOrderStatus AS ENUM ('INPROGRESS','DONE');
+CREATE TABLE PurchaseOrder(
+    OrderID SERIAL UNIQUE PRIMARY KEY,
+    ItemID INT NOT NULL ,
+    SupplierID INT NOT NULL,
+    StaffID INT NOT NULL,
+    Quantity INT NOT NULL,
+    UnitPrice FLOAT NOT NULL,
+    Status PurchaseOrderStatus,
+
+    FOREIGN KEY (ItemID) references Item(ItemID),
+    FOREIGN KEY (SupplierID) references Supplier(SupplierID),
+    FOREIGN KEY (StaffID) references  Staff(AccountID)
+);
+
+
+
+CREATE TABLE Staff_InventoryLog(
+    LogID SERIAL UNIQUE PRIMARY KEY,
+    StaffID INT NOT NULL ,
+    InventoryID INT NOT NULL ,
+    SupplierID INT NOT NULL ,
+    newQuantity INT NOT NULL ,
+    newPrice FLOAT NOT NULL ,
+
+    FOREIGN KEY (StaffID) REFERENCES Staff(AccountID),
+    FOREIGN KEY (InventoryID) REFERENCES Inventory(InventoryID),
+    FOREIGN KEY (SupplierID) REFERENCES Supplier(SupplierID)
+
+);
+
+CREATE OR REPLACE FUNCTION create_user_account(user_mail TEXT , user_name TEXT, user_PasswordHash TEXT)
+RETURNS VOID AS
+$$
+    INSERT INTO Customer(Email, name, PasswordHash, isActive)
+    VALUES(user_mail, user_name, user_PasswordHash, TRUE);
+
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION create_new_address(address_details TEXT)
+RETURNS VOID AS
+$$
+    INSERT INTO Address(details)
+    VALUES (address_details);
+
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION delete_customer_account(cust_id INT)
+RETURNS VOID AS
+$$
+    UPDATE Customer
+    SET isActive = False
+    WHERE accountID = cust_id
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION create_staff_account(user_mail TEXT , user_name TEXT, user_PasswordHash TEXT, user_role TEXT)
+RETURNS VOID AS
+$$
+    INSERT INTO Staff(Email, name, PasswordHash, isActive, Role)
+    VALUES(user_mail, user_name, user_PasswordHash, TRUE, user_role );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION create_new_supplier(sup_name TEXT , sup_emails TEXT, sup_telephone TEXT, sup_details TEXT)
+RETURNS VOID AS
+$$
+    INSERT INTO Supplier(Name, Emails, Telephone, Details)
+    VALUES(sup_name, sup_emails, sup_telephone, sup_details);
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION create_new_item(item_name TEXT, item_picturelink  TEXT)
+RETURNS VOID AS
+$$
+    INSERT INTO Item(Name, PictureLink)
+    VALUES(item_name, item_picturelink);
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION create_tags(tag_name TEXT, tag_details  TEXT)
+RETURNS VOID AS
+$$
+    INSERT INTO Tags(Name, Details)
+    VALUES(tag_name, tag_details);
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION create_tag_for_item(ent_tagsID int, ent_itemID int)
+RETURNS VOID AS
+$$
+    INSERT INTO item_tags(TagsID, ItemID )
+    VALUES(ent_tagsid, ent_itemid);
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION create_shipping_method(ship_name TEXT, ship_details TEXT)
+RETURNS VOID AS
+$$
+    INSERT INTO Shippingmethod(name, Details, isActive )
+    VALUES(ship_name, ship_details, true);
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION create_inventory_entry(inv_itemid int, inv_quantity int, inv_price float, order_type TEXT )
+RETURNS VOID AS
+$$
+    INSERT INTO inventory(Quantity, Price, ItemID, ordertype )
+    VALUES(inv_quantity, inv_price, inv_itemid, order_type);
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION create_address(address_details TEXT)
+RETURNS VOID AS
+$$
+    INSERT INTO Address(details)
+    VALUES(address_details);
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION create_approved_order(order_id int)
+RETURNS VOID AS
+$$
+    INSERT INTO ApprovedOrder(orderid, isfullfilled)
+    VALUES (order_id, false)
+$$ LANGUAGE SQL;
+
+
+CREATE OR REPLACE PROCEDURE create_customer_order(IN order_customerid int, IN order_addressid int,IN order_shippingmethod int, IN orderinventory_id int, IN order_type text ,  IN order_totalprice float,IN order_quantity int, INOUT statuscode int) AS
+    $$
+        BEGIN
+            UPDATE Inventory
+            SET quantity = quantity- order_quantity
+            WHERE inventoryid = orderinventory_id;
+            INSERT INTO CustomerOrder(CustomerID, AddressID, ShippingID, InventoryID, TotalPrice, OrderType, quantity)
+            VALUES(order_customerid, order_addressid, order_shippingmethod, orderinventory_id,order_totalprice, order_type, order_quantity);
+            statuscode = 0;
+        end;
+    $$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE PROCEDURE create_purchase_order(INOUT statuscode int, order_itemID int, order_supplierID int, order_staffID int, order_quantity int, order_unitprice int, order_status purchaseorderstatus ) AS
+    $$
+        BEGIN
+            INSERT INTO PurchaseOrder(itemid, supplierid, staffid, quantity, unitprice, status)
+            VALUES (order_itemID, order_supplierID, order_staffID, order_quantity, order_unitprice, order_status);
+            statuscode = 0 ;
+        end;
+
+    $$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE PROCEDURE update_purchase_order(INOUT statuscode int, order_id int ) AS
+    $$
+        BEGIN
+            UPDATE PurchaseOrder SET status = 'DONE'::purchaseorderstatus
+            WHERE OrderID = order_id;
+            statuscode = 0 ;
+        end;
+    $$ LANGUAGE PLPGSQL;
+
+CREATE FUNCTION read_show_user_orders(input_customer_id integer)
+    returns TABLE(orderid integer, totalprice double precision, ordertype character varying, orderdate timestamp without time zone, quantity integer, name character varying, picturelink character varying, shippingmethod character varying, addressdetail text)
+    language plpgsql
+as
+$$
+BEGIN
+    RETURN QUERY
+    SELECT CO.OrderID, CO.TotalPrice, CO.OrderType, CO.OrderDate, CO.Quantity, I.name, I.PictureLink, SM.name, A.details FROM
+    (CustomerOrder as CO
+    JOIN Inventory as Inv on CO.InventoryID = Inv.InventoryID)
+    JOIN Item as I on I.itemid = Inv.itemid
+    JOIN ShippingMethod as SM on sm.shippingid = CO.ShippingID
+    JOIN Address as A on A.addressid = co.addressid
+
+    WHERE co.CustomerID = input_customer_id;
+END;
+$$;
+
+
+
+
+CREATE OR REPLACE PROCEDURE update_inventory(INOUT statuscode int,  inv_id int, new_quantity int , new_price int , staff_id int, supplier_id int ) AS
+    $$
+        BEGIN
+            UPDATE Inventory
+            SET quantity = new_quantity, price = new_price
+            WHERE Inventory.inventoryid = inv_id;
+
+            INSERT INTO Staff_InventoryLog(StaffID, InventoryID, SupplierID, newQuantity, newPrice)
+            VALUES (staff_id, inv_id, supplier_id, new_quantity, new_price);
+            statuscode = 0 ;
+        end;
+
+    $$ LANGUAGE PLPGSQL;
+
+
+CREATE OR REPLACE PROCEDURE update_fullfill_approved_order(INOUT statuscode int, order_id int ) AS
+     $$
+        BEGIN
+            UPDATE ApprovedOrder
+            SET isfullfilled = TRUE
+            WHERE orderid = order_id;
+            statuscode = 0;
+        end;
+
+
+    $$ LANGUAGE PLPGSQL;
+
+
+CREATE OR REPLACE PROCEDURE create_item_supplier(INOUT statuscode int, supplier_id int, item_id int) AS
+    $$
+        BEGIN
+            INSERT INTO Item_Supplier( SupplierID, ItemID)
+            VALUES (supplier_id, item_id);
+            statuscode = 0;
+
+        end;
+    $$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE PROCEDURE delete_staff_account(INOUT statuscode int, staff_id int) AS
+    $$
+        BEGIN
+            UPDATE Staff
+            SET isActive = FALSE
+                WHERE staff_id = accountid;
+            statuscode = 0;
+        end;
+
+    $$  LANGUAGE PLPGSQL;
+
+
+
+
+CREATE FUNCTION read_show_staff_purchase_order( staff_id int)
+    returns TABLE (createat timestamp, StaffName character varying, ItemName  character varying, SupplierName  character varying, SupplierEmails  character varying)
+    language plpgsql
+as
+$$
+BEGIN
+    RETURN QUERY
+    SELECT CreatedAt, S.name, I.name, Su.name, Su.Emails FROM
+             PurchaseOrder as PO
+                JOIN Staff S on PO.StaffID = S.AccountID
+                JOIN Item I on PO.ItemID = I.ItemID
+                JOIN Supplier Su on PO.SupplierID = Su.SupplierID;
+END;
+$$;
+
+
+CREATE FUNCTION read_show_instock_items()
+    returns TABLE (InventoryID int, Quantity int, price float, OrderType character varying, name character varying , PictureLink character varying)
+    language plpgsql
+as
+$$
+BEGIN
+    RETURN QUERY
+    SELECT inv.InventoryID, inv.Quantity, inv.price, inv.OrderType, I.name, I.PictureLink FROM inventory inv
+    JOIN Item I on inv.ItemID = I.ItemID
+    WHERE inv.Quantity > 0;
+END;
+$$;
+
+CREATE FUNCTION read_show_all_items()
+    returns TABLE (InventoryID int, Quantity int, price float, OrderType character varying, name character varying , PictureLink character varying)
+    language plpgsql
+as
+$$
+BEGIN
+    RETURN QUERY
+    SELECT inv.InventoryID, inv.Quantity, inv.price, inv.OrderType, I.name, I.PictureLink FROM inventory inv
+    JOIN Item I on inv.ItemID = I.ItemID;
+END;
+$$;
+
+CREATE FUNCTION read_show_preorder_items()
+    returns TABLE (InventoryID int, Quantity int, price float, OrderType character varying, name character varying , PictureLink character varying)
+    language plpgsql
+as
+$$
+BEGIN
+    RETURN QUERY
+    SELECT inv.InventoryID, inv.Quantity, inv.price, inv.OrderType, I.name, I.PictureLink FROM inventory inv
+    JOIN Item I on inv.ItemID = I.ItemID
+    WHERE inv.OrderType = 'PreOrder';
+END;
+$$;
+
+
+
+
